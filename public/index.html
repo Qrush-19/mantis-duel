@@ -715,9 +715,8 @@ function drawAll(){
   for(const pt of particles){ctx.save();ctx.globalAlpha=Math.max(0,pt.life);ctx.fillStyle=pt.color;ctx.shadowColor=pt.color;ctx.shadowBlur=pt.spark?10:4;ctx.beginPath();ctx.arc(pt.x,pt.y,pt.size*Math.max(.1,pt.life),0,Math.PI*2);ctx.fill();ctx.restore();}
   if(p2) p2.draw();
   if(p1) p1.draw();
-  // 히트박스 디버그
   [p1,p2].forEach(f=>{
-    if(f&&f.hitbox){const hb=f.hitbox,hx=f.x+hb.ox-hb.w/2,hy=f.y+hb.oy-hb.h/2;ctx.save();ctx.globalAlpha=.15;ctx.fillStyle=f.color;ctx.fillRect(hx,hy,hb.w,hb.h);ctx.globalAlpha=.4;ctx.strokeStyle=f.color;ctx.lineWidth=1;ctx.strokeRect(hx,hy,hb.w,hb.h);ctx.restore();}
+    if(false){// 히트박스 디버그 비활성화
   });
   [p1,p2].forEach(f=>{if(f&&f.hp>0&&f.hp<20&&Math.floor(Date.now()/200)%2===0){ctx.save();ctx.globalAlpha=.08;ctx.fillStyle=f.color;ctx.fillRect(0,0,860,480);ctx.restore();}});
 }
