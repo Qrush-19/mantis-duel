@@ -624,102 +624,81 @@ function loop(ts){
         if(jp['KeyD']) p1.attack('special');
         p1.blocking=!!(keys['ArrowDown']&&p1.onGround);
       }
-      aiUpdate(p2, p1, dt);
-      p1.update(dt,p2); p2.update(dt,p1);
-      p1.checkHit(p2); p2.checkHit(p1);
-      for(const pt of particles){ pt.x+=pt.vx*dt;pt.y+=pt.vy*dt;pt.vy+=700*dt;pt.life-=dt*(pt.spark?3.5:2); }
-      particles=particles.filter(p=>p.life>0);
-      // 라운드 종료
-      if(p1.hp<=0||p2.hp<=0){
-        gamePhase='roundover'; phaseTimer=2.2;
-        let winner,txt;
-        if(p1.hp<=0&&p2.hp<=0){ p1Wins++;p2Wins++;txt='DRAW';winner='draw'; }
-        else if(p1.hp<=0){ p2Wins++;txt='CPU WINS';winner='p2'; }
-        else { p1Wins++;txt=myName+' WINS';winner='p1'; }
-        updateRoundHUD();
-        showAnnounce(txt, winner==='p1'?'#4dff6e':'#ff4d6e');
-        burst(winner==='p1'?p2.x:p1.x, GROUND-20, winner==='p1'?p2.color:p1.color, 30, true);
-      }
-    }
-    // ── 온라인 모드 ───────────────────────────────────
-    else {
-
-    // ── 온라인 모드 ───────────────────────────────────
-    else {
-    // ── 내 캐릭터 키 입력 ──
-    const myKeys   = myRole==='host' ? keys : opponentKeys;
-    const oppKeys  = myRole==='host' ? opponentKeys : keys;
-    const myMantis = myRole==='host' ? p1 : p2;
-    const oppMantis= myRole==='host' ? p2 : p1;
-
-    // 내 입력 전송 (60fps → 약 16ms마다)
-    inputSendTimer+=dt;
-    if(inputSendTimer>=.016){
-      wsSend({type:'input',keys:Object.fromEntries(Object.entries(keys).filter(([,v])=>v))});
-      inputSendTimer=0;
-    }
-
-    // ── host만 물리 계산 ──
-    if(myRole==='host'){
-      // P1(host) 입력
-      if(p1.hitstun<=0&&p1.hp>0){
-        if(keys['ArrowLeft']) p1.vx=-230;
-        else if(keys['ArrowRight']) p1.vx=230;
-        else if(p1.onGround) p1.vx*=.5;
-        if(jp['ArrowUp']) p1.jump();
-        if(jp['KeyA']) p1.attack('weak');
-        if(jp['KeyS']) p1.attack('strong');
-        if(jp['KeyD']) p1.attack('special');
-        p1.blocking=!!(keys['ArrowDown']&&p1.onGround);
-      }
-      // P2(guest) 입력
-      if(p2.hitstun<=0&&p2.hp>0){
-        if(opponentKeys['ArrowLeft']) p2.vx=-230;
-        else if(opponentKeys['ArrowRight']) p2.vx=230;
-        else if(p2.onGround) p2.vx*=.5;
-        if(opponentKeys['ArrowUp']&&!p2._oppJumpHeld){ p2.jump();p2._oppJumpHeld=true; }
-        if(!opponentKeys['ArrowUp']) p2._oppJumpHeld=false;
-        if(opponentKeys['KeyA']&&!p2._oppAHeld){ p2.attack('weak');p2._oppAHeld=true; }
-        if(!opponentKeys['KeyA']) p2._oppAHeld=false;
-        if(opponentKeys['KeyS']&&!p2._oppSHeld){ p2.attack('strong');p2._oppSHeld=true; }
-        if(!opponentKeys['KeyS']) p2._oppSHeld=false;
-        if(opponentKeys['KeyD']&&!p2._oppDHeld){ p2.attack('special');p2._oppDHeld=true; }
-        if(!opponentKeys['KeyD']) p2._oppDHeld=false;
-        p2.blocking=!!(opponentKeys['ArrowDown']&&p2.onGround);
-      }
+      aiUpdate(p2,p1,dt);
       p1.update(dt,p2);p2.update(dt,p1);
       p1.checkHit(p2);p2.checkHit(p1);
-
-      // 파티클
-      for(const pt of particles){ pt.x+=pt.vx*dt;pt.y+=pt.vy*dt;pt.vy+=700*dt;pt.life-=dt*(pt.spark?3.5:2); }
+      for(const pt of particles){pt.x+=pt.vx*dt;pt.y+=pt.vy*dt;pt.vy+=700*dt;pt.life-=dt*(pt.spark?3.5:2);}
       particles=particles.filter(p=>p.life>0);
-
-      // 상태 전송 (약 30fps)
-      stateSendTimer+=dt;
-      if(stateSendTimer>=.033){
-        wsSend({type:'game_state',state:{p1:p1.getState(),p2:p2.getState(),particles:[...particles]}});
-        stateSendTimer=0;
-      }
-
-      // 라운드 종료 체크
       if(p1.hp<=0||p2.hp<=0){
         gamePhase='roundover';phaseTimer=2.2;
         let winner,txt;
-        if(p1.hp<=0&&p2.hp<=0){ p1Wins++;p2Wins++;txt='DRAW';winner='draw'; }
-        else if(p1.hp<=0){ p2Wins++;txt='ROJO WINS';winner='p2'; }
-        else { p1Wins++;txt='VERDE WINS';winner='p1'; }
+        if(p1.hp<=0&&p2.hp<=0){p1Wins++;p2Wins++;txt='DRAW';winner='draw';}
+        else if(p1.hp<=0){p2Wins++;txt='CPU WINS';winner='p2';}
+        else{p1Wins++;txt=myName+' WINS';winner='p1';}
         updateRoundHUD();
         showAnnounce(txt,winner==='p1'?'#4dff6e':'#ff4d6e');
         burst(winner==='p1'?p2.x:p1.x,GROUND-20,winner==='p1'?p2.color:p1.color,30,true);
-        wsSend({type:'round_event',event:{type:'round_win',winner,p1Wins,p2Wins,announceText:txt}});
-        if(p1Wins>=3||p2Wins>=3){
-          setTimeout(()=>{ wsSend({type:'round_event',event:{type:'game_over',winner:p1Wins>=3?'p1':'p2'}}); },2300);
-        }
       }
     }
-    // guest는 applyRemoteState에서 수신해서 업데이트 (아래)
-    } // end host
-    } // end online mode
+    // ── 온라인 모드 ───────────────────────────────────
+    else {
+      // 내 입력 전송
+      inputSendTimer+=dt;
+      if(inputSendTimer>=.016){
+        wsSend({type:'input',keys:Object.fromEntries(Object.entries(keys).filter(([,v])=>v))});
+        inputSendTimer=0;
+      }
+      if(myRole==='host'){
+        if(p1.hitstun<=0&&p1.hp>0){
+          if(keys['ArrowLeft']) p1.vx=-230;
+          else if(keys['ArrowRight']) p1.vx=230;
+          else if(p1.onGround) p1.vx*=.5;
+          if(jp['ArrowUp']) p1.jump();
+          if(jp['KeyA']) p1.attack('weak');
+          if(jp['KeyS']) p1.attack('strong');
+          if(jp['KeyD']) p1.attack('special');
+          p1.blocking=!!(keys['ArrowDown']&&p1.onGround);
+        }
+        if(p2.hitstun<=0&&p2.hp>0){
+          if(opponentKeys['ArrowLeft']) p2.vx=-230;
+          else if(opponentKeys['ArrowRight']) p2.vx=230;
+          else if(p2.onGround) p2.vx*=.5;
+          if(opponentKeys['ArrowUp']&&!p2._oppJumpHeld){p2.jump();p2._oppJumpHeld=true;}
+          if(!opponentKeys['ArrowUp']) p2._oppJumpHeld=false;
+          if(opponentKeys['KeyA']&&!p2._oppAHeld){p2.attack('weak');p2._oppAHeld=true;}
+          if(!opponentKeys['KeyA']) p2._oppAHeld=false;
+          if(opponentKeys['KeyS']&&!p2._oppSHeld){p2.attack('strong');p2._oppSHeld=true;}
+          if(!opponentKeys['KeyS']) p2._oppSHeld=false;
+          if(opponentKeys['KeyD']&&!p2._oppDHeld){p2.attack('special');p2._oppDHeld=true;}
+          if(!opponentKeys['KeyD']) p2._oppDHeld=false;
+          p2.blocking=!!(opponentKeys['ArrowDown']&&p2.onGround);
+        }
+        p1.update(dt,p2);p2.update(dt,p1);
+        p1.checkHit(p2);p2.checkHit(p1);
+        for(const pt of particles){pt.x+=pt.vx*dt;pt.y+=pt.vy*dt;pt.vy+=700*dt;pt.life-=dt*(pt.spark?3.5:2);}
+        particles=particles.filter(p=>p.life>0);
+        stateSendTimer+=dt;
+        if(stateSendTimer>=.033){
+          wsSend({type:'game_state',state:{p1:p1.getState(),p2:p2.getState(),particles:[...particles]}});
+          stateSendTimer=0;
+        }
+        if(p1.hp<=0||p2.hp<=0){
+          gamePhase='roundover';phaseTimer=2.2;
+          let winner,txt;
+          if(p1.hp<=0&&p2.hp<=0){p1Wins++;p2Wins++;txt='DRAW';winner='draw';}
+          else if(p1.hp<=0){p2Wins++;txt='ROJO WINS';winner='p2';}
+          else{p1Wins++;txt='VERDE WINS';winner='p1';}
+          updateRoundHUD();
+          showAnnounce(txt,winner==='p1'?'#4dff6e':'#ff4d6e');
+          burst(winner==='p1'?p2.x:p1.x,GROUND-20,winner==='p1'?p2.color:p1.color,30,true);
+          wsSend({type:'round_event',event:{type:'round_win',winner,p1Wins,p2Wins,announceText:txt}});
+          if(p1Wins>=3||p2Wins>=3){
+            setTimeout(()=>{wsSend({type:'round_event',event:{type:'game_over',winner:p1Wins>=3?'p1':'p2'}});},2300);
+          }
+        }
+      }
+      // guest는 applyRemoteState에서 수신
+    }
   }
 
   for(const k in jp) delete jp[k];
