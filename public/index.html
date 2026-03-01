@@ -100,6 +100,61 @@ canvas{display:block;box-shadow:0 0 80px rgba(0,0,0,.8);}
   pointer-events:none;opacity:0;transition:opacity .15s;z-index:50;
 }
 #announce.show{opacity:1;}
+
+/* 키뷰어 */
+#key-viewer{
+  position:absolute;
+  bottom:2px; left:50%; transform:translateX(-50%);
+  display:flex;gap:14px;align-items:flex-end;
+  pointer-events:none;z-index:10;
+  opacity:0;transition:opacity .3s;
+}
+#key-viewer.visible{opacity:1;}
+.kv-group{display:flex;flex-direction:column;gap:3px;}
+.kv-row{display:flex;gap:3px;justify-content:center;}
+.kv-key{
+  width:26px;height:26px;
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:4px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-family:'Share Tech Mono',monospace;
+  color:rgba(255,255,255,.4);
+  transition:all .05s;
+}
+.kv-key.active{
+  background:rgba(255,255,255,.2);
+  border-color:rgba(255,255,255,.5);
+  color:#fff;
+  box-shadow:0 0 8px rgba(255,255,255,.3);
+  transform:scale(.93);
+}
+.kv-atk.active{
+  background:rgba(240,192,64,.25);
+  border-color:var(--gold);
+  color:var(--gold);
+  box-shadow:0 0 8px rgba(240,192,64,.4);
+}
+.kv-block.active{
+  background:rgba(77,180,255,.25);
+  border-color:#4db4ff;
+  color:#4db4ff;
+  box-shadow:0 0 8px rgba(77,180,255,.4);
+}
+
+/* Quick Match 대기 점 애니메이션 */
+.queue-dots{display:flex;gap:10px;margin:8px 0;}
+.queue-dots span{
+  width:10px;height:10px;border-radius:50%;
+  background:var(--gold);
+  animation:qdot .9s infinite ease-in-out;
+}
+.queue-dots span:nth-child(2){animation-delay:.2s;}
+.queue-dots span:nth-child(3){animation-delay:.4s;}
+@keyframes qdot{
+  0%,80%,100%{transform:scale(.4);opacity:.3;}
+  40%{transform:scale(1);opacity:1;}
+}
 </style>
 </head>
 <body>
@@ -123,7 +178,31 @@ canvas{display:block;box-shadow:0 0 80px rgba(0,0,0,.8);}
   </div>
 
   <canvas id="c" width="860" height="480"></canvas>
-  <div id="key-guide"><span>← → 이동</span><span>↑ 점프</span><span>A 약공격</span><span>S 강공격</span><span>D 필살기</span><span>↓ 가드</span></div>
+
+  <!-- 키뷰어 -->
+  <div id="key-viewer">
+    <div class="kv-group">
+      <div class="kv-row">
+        <div class="kv-key" id="kv-up">↑</div>
+      </div>
+      <div class="kv-row">
+        <div class="kv-key" id="kv-left">←</div>
+        <div class="kv-key" id="kv-down">↓</div>
+        <div class="kv-key" id="kv-right">→</div>
+      </div>
+    </div>
+    <div class="kv-group">
+      <div class="kv-row">
+        <div class="kv-key kv-atk" id="kv-a">A</div>
+        <div class="kv-key kv-atk" id="kv-s">S</div>
+        <div class="kv-key kv-atk" id="kv-d">D</div>
+      </div>
+      <div class="kv-row">
+        <div class="kv-key kv-block" id="kv-f">F</div>
+      </div>
+    </div>
+  </div>
+
   <div id="announce"></div>
 
   <!-- 메인 메뉴 -->
@@ -135,7 +214,10 @@ canvas{display:block;box-shadow:0 0 80px rgba(0,0,0,.8);}
       <button class="btn" onclick="showCreate()">방 만들기</button>
       <button class="btn" onclick="showJoin()">방 입장</button>
     </div>
-    <button class="btn" style="border-color:var(--p2c);color:var(--p2c);" onclick="startVsCPU()">🤖 VS CPU</button>
+    <div class="btn-row">
+      <button class="btn" style="border-color:#f0c040;color:#f0c040;" onclick="startQuickMatch()">⚡ QUICK MATCH</button>
+      <button class="btn" style="border-color:var(--p2c);color:var(--p2c);" onclick="startVsCPU()">🤖 VS CPU</button>
+    </div>
     <p style="opacity:.25;font-size:10px;">링크로 도전장 보내기 · 실시간 온라인 대전</p>
   </div>
 
@@ -156,6 +238,14 @@ canvas{display:block;box-shadow:0 0 80px rgba(0,0,0,.8);}
     <button class="btn" onclick="joinRoom()">입장</button>
     <div class="status-text" id="join-status"></div>
     <button class="btn" style="opacity:.4;font-size:9px;" onclick="showMenu()">← 돌아가기</button>
+  </div>
+
+  <!-- Quick Match 대기 -->
+  <div class="overlay hidden" id="queue-screen">
+    <h1 style="font-size:30px">QUICK MATCH</h1>
+    <div class="queue-dots"><span></span><span></span><span></span></div>
+    <div class="status-text">상대방을 찾는 중...</div>
+    <button class="btn" style="opacity:.4;font-size:9px;" onclick="cancelQueue()">← 취소</button>
   </div>
 
   <!-- 결과 -->
@@ -225,9 +315,14 @@ function handleMessage(msg) {
       myRole = msg.yourRole;
       document.getElementById('create-screen').classList.add('hidden');
       document.getElementById('join-screen').classList.add('hidden');
+      document.getElementById('queue-screen').classList.add('hidden');
       // 내 이름 상대에게 전송
       wsSend({ type: 'player_name', name: myName });
       initGame();
+      break;
+
+    case 'queue_waiting':
+      // 이미 queue-screen 표시 중 — 아무것도 안 해도 됨
       break;
 
     case 'player_name':
@@ -271,8 +366,24 @@ function handleMessage(msg) {
 function showMenu() {
   running = false;
   isCPUMode = false;
-  ['menu-screen','create-screen','join-screen','result-screen','disconnect-screen']
+  // 키뷰어 숨기기
+  document.getElementById('key-viewer').classList.remove('visible');
+  ['menu-screen','create-screen','join-screen','queue-screen','result-screen','disconnect-screen']
     .forEach(id => document.getElementById(id).classList.toggle('hidden', id!=='menu-screen'));
+}
+
+function startQuickMatch() {
+  myName = document.getElementById('my-name-input').value.trim().toUpperCase() || 'PLAYER';
+  connectWS(() => {
+    wsSend({ type: 'quick_match', name: myName });
+  });
+  document.getElementById('menu-screen').classList.add('hidden');
+  document.getElementById('queue-screen').classList.remove('hidden');
+}
+
+function cancelQueue() {
+  wsSend({ type: 'cancel_queue' });
+  showMenu();
 }
 
 function startVsCPU() {
@@ -284,7 +395,25 @@ function startVsCPU() {
   initGame();
 }
 
-// ── CPU AI ──
+// ── 키뷰어 ──
+function updateKeyViewer(){
+  const kv = document.getElementById('key-viewer');
+  if(!running||gamePhase!=='fight'){ kv.classList.remove('visible'); return; }
+  kv.classList.add('visible');
+  const map = {
+    'kv-up':    keys['ArrowUp'],
+    'kv-left':  keys['ArrowLeft'],
+    'kv-down':  keys['ArrowDown'],
+    'kv-right': keys['ArrowRight'],
+    'kv-a':     keys['KeyA'],
+    'kv-s':     keys['KeyS'],
+    'kv-d':     keys['KeyD'],
+    'kv-f':     keys['KeyF'],
+  };
+  for(const [id, active] of Object.entries(map)){
+    document.getElementById(id).classList.toggle('active', !!active);
+  }
+}
 function aiUpdate(ai, opp, dt) {
   if(ai.hitstun>0||ai.hp<=0) return;
   ai.aiTimer=(ai.aiTimer||0)-dt;
@@ -623,7 +752,7 @@ function loop(ts){
         if(jp['KeyA']) p1.attack('weak');
         if(jp['KeyS']) p1.attack('strong');
         if(jp['KeyD']) p1.attack('special');
-        p1.blocking=!!(keys['ArrowDown']&&p1.onGround);
+        p1.blocking=!!((keys['ArrowDown']||keys['KeyF'])&&p1.onGround);
       }
       aiUpdate(p2,p1,dt);
       p1.update(dt,p2);p2.update(dt,p1);
@@ -658,7 +787,7 @@ function loop(ts){
           if(jp['KeyA']) p1.attack('weak');
           if(jp['KeyS']) p1.attack('strong');
           if(jp['KeyD']) p1.attack('special');
-          p1.blocking=!!(keys['ArrowDown']&&p1.onGround);
+          p1.blocking=!!((keys['ArrowDown']||keys['KeyF'])&&p1.onGround);
         }
         if(p2.hitstun<=0&&p2.hp>0){
           if(opponentKeys['ArrowLeft']) p2.vx=-230;
@@ -672,7 +801,7 @@ function loop(ts){
           if(!opponentKeys['KeyS']) p2._oppSHeld=false;
           if(opponentKeys['KeyD']&&!p2._oppDHeld){p2.attack('special');p2._oppDHeld=true;}
           if(!opponentKeys['KeyD']) p2._oppDHeld=false;
-          p2.blocking=!!(opponentKeys['ArrowDown']&&p2.onGround);
+          p2.blocking=!!((opponentKeys['ArrowDown']||opponentKeys['KeyF'])&&p2.onGround);
         }
         p1.update(dt,p2);p2.update(dt,p1);
         p1.checkHit(p2);p2.checkHit(p1);
@@ -704,6 +833,7 @@ function loop(ts){
 
   for(const k in jp) delete jp[k];
   updateHPHUD();
+  updateKeyViewer();
   drawAll();
   raf=requestAnimationFrame(loop);
 }
