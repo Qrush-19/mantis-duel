@@ -643,24 +643,27 @@ class Mantis {
   attack(type){
     if(this.state==='hurt'||this.state==='dead') return;
     if(this.blocking) return;
+    if(this.ultActive) return; // 얼티밋 중 일반 공격 불가
     if(this.stateTimer>0&&(this.state==='weak'||this.state==='strong'||this.state==='special')) return;
     if(type==='weak'){ this.state='weak';this.stateTimer=.22;this.hitbox={ox:this.facing*-48,oy:-72,w:70,h:60,dmg:2,kb:3,type}; }
-    else if(type==='strong'){ this.state='strong';this.stateTimer=.38;this.hitbox={ox:this.facing*-52,oy:-80,w:82,h:75,dmg:5,kb:6,type}; }
+    else if(type==='strong'){ this.state='strong';this.stateTimer=.38;this.hitbox={ox:this.facing*-52,oy:-80,w:82,h:75,dmg:4,kb:6,type}; }
     else if(type==='special'){
       if(this.specialCooldown>0) return;
-      this.state='special';this.stateTimer=.5;this.hitbox={ox:this.facing*-40,oy:-85,w:90,h:85,dmg:8,kb:9,type};
+      this.state='special';this.stateTimer=.5;this.hitbox={ox:this.facing*-40,oy:-85,w:90,h:85,dmg:6,kb:9,type};
       this.specialCooldown=4;
     }
   }
   ultimate(){
-    if(this.state==='hurt'||this.state==='dead') return;
+    if(this.state==='dead') return;
     if(this.blocking) return;
     if(this.ultCooldown>0) return;
+    if(this.ultActive) return;
     this.ultActive=true;
-    this.ultTimer=5;       // 5초 지속
-    this.ultCooldown=15;   // 15초 쿨타임
-    this.ultHitTimer=0;    // 내부 히트 간격 타이머
-    burst(this.x,this.y-40,this.color,20,true);
+    this.ultTimer=3;        // 3초 지속
+    this.ultCooldown=30;    // 30초 쿨타임
+    this.ultHitTimer=0;
+    this.invincible=999;    // 지속시간 동안 무적 (ultTimer로 관리)
+    burst(this.x,this.y-40,this.color,24,true);
     showAnnounce('ULTIMATE!', this.color);
   }
   jump(){
@@ -676,18 +679,31 @@ class Mantis {
     if(this.ultActive){
       this.ultTimer=Math.max(0,this.ultTimer-dt);
       this.ultHitTimer=Math.max(0,(this.ultHitTimer||0)-dt);
-      if(this.ultTimer<=0){ this.ultActive=false; }
-      else if(this.ultHitTimer<=0&&opp.hp>0&&opp.invincible<=0){
-        // 원 범위 충돌: 중심 거리 체크
-        const dx=opp.x-this.x, dy=(opp.y-40)-(this.y-40);
-        const dist=Math.sqrt(dx*dx+dy*dy);
-        const ULT_R=90;
-        if(dist<ULT_R){
-          const dmg=opp.blocking?1:6;
-          opp.hp=Math.max(0,opp.hp-dmg);
-          if(!opp.blocking){ opp.invincible=.25; }
-          spark(opp.x,opp.y-30,0,this.color);
-          this.ultHitTimer=.5; // 0.5초마다 한 번씩 히트
+      if(this.ultTimer<=0){
+        // 얼티밋 종료 → 무적 해제
+        this.ultActive=false;
+        this.invincible=0;
+      } else {
+        // 무적 유지
+        this.invincible=dt+.01;
+        // 몸통 충돌로 데미지 + 넉백
+        if(this.ultHitTimer<=0&&opp.hp>0&&opp.invincible<=0){
+          const dx=opp.x-this.x, dy=(opp.y-40)-(this.y-40);
+          const dist=Math.sqrt(dx*dx+dy*dy);
+          if(dist<70){
+            const dmg=opp.blocking?2:8;
+            opp.hp=Math.max(0,opp.hp-dmg);
+            if(!opp.blocking){
+              const kbDir=dx>0?1:-1;
+              opp.vx=kbDir*500; opp.vy=-300;
+              opp.hitstun=.3; opp.invincible=.4;
+              opp.state='hurt'; opp.stateTimer=.3; opp.onGround=false;
+            }
+            spark(opp.x,opp.y-30,0,this.color);
+            burst(opp.x,opp.y-30,this.color,8,false);
+            hitStop=.06;
+            this.ultHitTimer=.4;
+          }
         }
       }
     }
@@ -719,25 +735,27 @@ class Mantis {
   }
   draw(){
     if(this.hp<=0&&this.state!=='dead') this.state='dead';
-    // 궁극기 원 그리기
+    // 얼티밋 원 + 무적 글로우
     if(this.ultActive&&this.ultTimer>0){
-      const ULT_R=90;
-      const alpha=Math.min(1,this.ultTimer/5)*0.7;
-      const pulse=1+Math.sin(Date.now()*.008)*0.06;
+      const ULT_R=70;
+      const alpha=Math.min(1,this.ultTimer/3)*0.75;
+      const pulse=1+Math.sin(Date.now()*.012)*0.08;
       ctx.save();
+      // 외곽 원
       ctx.beginPath();ctx.arc(this.x,this.y-40,ULT_R*pulse,0,Math.PI*2);
-      ctx.strokeStyle=this.color;ctx.lineWidth=3;ctx.globalAlpha=alpha;
-      ctx.shadowColor=this.color;ctx.shadowBlur=18;ctx.stroke();
+      ctx.strokeStyle=this.color;ctx.lineWidth=4;ctx.globalAlpha=alpha;
+      ctx.shadowColor=this.color;ctx.shadowBlur=24;ctx.stroke();
+      // 내부 채우기
       ctx.beginPath();ctx.arc(this.x,this.y-40,ULT_R*pulse,0,Math.PI*2);
-      ctx.fillStyle=this.color;ctx.globalAlpha=alpha*.12;ctx.fill();
-      // 남은 시간 표시
-      ctx.globalAlpha=alpha;ctx.fillStyle=this.color;
-      ctx.font='bold 11px Share Tech Mono';ctx.textAlign='center';
-      ctx.shadowBlur=6;
-      ctx.fillText(Math.ceil(this.ultTimer)+'s',this.x,this.y-40-ULT_R-6);
+      ctx.fillStyle=this.color;ctx.globalAlpha=alpha*.15;ctx.fill();
+      // 남은 시간
+      ctx.globalAlpha=alpha*0.9;ctx.fillStyle=this.color;
+      ctx.font='bold 12px Share Tech Mono';ctx.textAlign='center';
+      ctx.shadowBlur=8;
+      ctx.fillText(Math.ceil(this.ultTimer)+'s',this.x,this.y-40-ULT_R*pulse-8);
       ctx.restore();
     }
-    drawMantis(this.x,this.y,this.facing,this.color,this.state,this.frame,this.hp,this.blocking);
+    drawMantis(this.x,this.y,this.facing,this.color,this.ultActive?'special':this.state,this.frame,this.hp,this.blocking);
   }
   getState(){
     return {x:this.x,y:this.y,vx:this.vx,vy:this.vy,hp:this.hp,facing:this.facing,state:this.state,stateTimer:this.stateTimer,hitstun:this.hitstun,invincible:this.invincible,blocking:this.blocking,hitbox:this.hitbox,specialCooldown:this.specialCooldown,ultActive:this.ultActive,ultTimer:this.ultTimer,ultCooldown:this.ultCooldown};
