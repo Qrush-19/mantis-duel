@@ -91,6 +91,17 @@ canvas{display:block;box-shadow:0 0 80px rgba(0,0,0,.8);}
 .name-input:focus{border-color:var(--gold);box-shadow:0 0 12px rgba(240,192,64,.2);}
 .name-label{font-size:10px;letter-spacing:3px;opacity:.45;margin-bottom:-10px;}
 
+/* 색상 선택 */
+.color-label{font-size:10px;letter-spacing:3px;opacity:.45;}
+.color-swatches{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:280px;}
+.color-swatch{
+  width:30px;height:30px;border-radius:50%;cursor:pointer;
+  border:2px solid transparent;transition:all .15s;
+  position:relative;
+}
+.color-swatch:hover{transform:scale(1.15);}
+.color-swatch.selected{border-color:#fff;box-shadow:0 0 10px rgba(255,255,255,.6);transform:scale(1.2);}
+
 /* Announce */
 #announce{
   position:absolute;left:0;right:0;top:calc(44px + 150px);
@@ -223,6 +234,8 @@ canvas{display:block;box-shadow:0 0 80px rgba(0,0,0,.8);}
     <h1>MANTIS DUEL</h1>
     <div class="name-label">내 닉네임</div>
     <input class="name-input" id="my-name-input" maxlength="12" placeholder="닉네임 입력..." spellcheck="false">
+    <div class="color-label">사마귀 색상</div>
+    <div class="color-swatches" id="color-swatches"></div>
     <div class="btn-row">
       <button class="btn" onclick="showCreate()">방 만들기</button>
       <button class="btn" onclick="showJoin()">방 입장</button>
@@ -286,12 +299,45 @@ const WS_URL = location.protocol === 'https:'
   : 'ws://' + location.host;
 
 let ws = null;
-let myRole = null;   // 'host' | 'guest'
+let myRole = null;
 let myRoomId = null;
 let myName = 'PLAYER';
+let myColor = '#7fff8a';  // 기본 색상
 let opponentName = 'OPPONENT';
 let pingStart = 0, latency = 0;
 let rematchVote = false;
+
+// ── 색상 팔레트 ──
+const COLOR_PALETTE = [
+  {hex:'#7fff8a', label:'라임'},
+  {hex:'#40e0ff', label:'하늘'},
+  {hex:'#ff6b9d', label:'핑크'},
+  {hex:'#ffdd57', label:'노랑'},
+  {hex:'#ff8c42', label:'오렌지'},
+  {hex:'#c77dff', label:'보라'},
+  {hex:'#ff4444', label:'빨강'},
+  {hex:'#ffffff', label:'흰색'},
+  {hex:'#4dffb8', label:'민트'},
+  {hex:'#ff9ef5', label:'연보라'},
+];
+
+function initColorPicker(){
+  const wrap = document.getElementById('color-swatches');
+  wrap.innerHTML = '';
+  COLOR_PALETTE.forEach((c,i)=>{
+    const el = document.createElement('div');
+    el.className = 'color-swatch' + (i===0?' selected':'');
+    el.style.background = c.hex;
+    el.style.boxShadow = `0 0 8px ${c.hex}66`;
+    el.title = c.label;
+    el.onclick = ()=>{
+      document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('selected'));
+      el.classList.add('selected');
+      myColor = c.hex;
+    };
+    wrap.appendChild(el);
+  });
+}
 
 function connectWS(cb) {
   if(!location.host) return; // 로컬 파일로 열었을 때 방지
@@ -329,18 +375,21 @@ function handleMessage(msg) {
       document.getElementById('create-screen').classList.add('hidden');
       document.getElementById('join-screen').classList.add('hidden');
       document.getElementById('queue-screen').classList.add('hidden');
-      // 내 이름 상대에게 전송
-      wsSend({ type: 'player_name', name: myName });
+      // 내 이름+색상 상대에게 전송
+      wsSend({ type: 'player_name', name: myName, color: myColor });
       initGame();
       break;
 
     case 'queue_waiting':
-      // 이미 queue-screen 표시 중 — 아무것도 안 해도 됨
       break;
 
     case 'player_name':
-      // 상대방 이름 수신
       opponentName = msg.name || 'OPPONENT';
+      // 상대 색상 적용
+      if(msg.color){
+        const opp = myRole==='host' ? p2 : p1;
+        if(opp) opp.color = msg.color;
+      }
       updateNameHUD();
       break;
 
@@ -407,7 +456,6 @@ function startVsCPU() {
   document.getElementById('menu-screen').classList.add('hidden');
   initGame();
 }
-
 // ── 키뷰어 ──
 function updateKeyViewer(){
   const kv = document.getElementById('key-viewer');
@@ -550,7 +598,7 @@ function spark(x,y,dir,color){
 // ════════════════════════════════════════════════════
 //  사마귀 그리기
 // ════════════════════════════════════════════════════
-function drawMantis(x,y,facing,color,state,frame,hp,blocking){
+function drawMantis(x,y,facing,color,state,frame,hp,blocking,ultActive=false){
   ctx.save();
   ctx.translate(x,y);
   ctx.scale(facing,1);
@@ -558,7 +606,9 @@ function drawMantis(x,y,facing,color,state,frame,hp,blocking){
   if(hp<=0){ctx.rotate(Math.PI/2);ctx.translate(0,-20);}
   ctx.save();ctx.scale(1,.15);ctx.beginPath();ctx.ellipse(0,0,28,10,0,0,Math.PI*2);ctx.fillStyle='rgba(0,0,0,.3)';ctx.fill();ctx.restore();
   const gc=color;
-  ctx.shadowColor=gc;ctx.shadowBlur=state==='special'?20:8;
+  // 얼티밋 중 강한 글로우
+  ctx.shadowColor=gc;
+  ctx.shadowBlur=ultActive?(16+Math.sin(Date.now()*.015)*8)*2:(state==='special'?20:8);
   // 복부
   ctx.save();ctx.translate(18,-10);ctx.rotate(-.3+Math.sin(t*.08)*.05);
   for(let i=0;i<4;i++){ctx.beginPath();ctx.ellipse(i*7,i*3,10-i*1.5,(10-i*1.5)*.7,.3,0,Math.PI*2);ctx.fillStyle=i%2===0?gc:gc+'cc';ctx.fill();ctx.strokeStyle='rgba(0,0,0,.3)';ctx.lineWidth=1;ctx.stroke();}
@@ -735,27 +785,7 @@ class Mantis {
   }
   draw(){
     if(this.hp<=0&&this.state!=='dead') this.state='dead';
-    // 얼티밋 원 + 무적 글로우
-    if(this.ultActive&&this.ultTimer>0){
-      const ULT_R=70;
-      const alpha=Math.min(1,this.ultTimer/3)*0.75;
-      const pulse=1+Math.sin(Date.now()*.012)*0.08;
-      ctx.save();
-      // 외곽 원
-      ctx.beginPath();ctx.arc(this.x,this.y-40,ULT_R*pulse,0,Math.PI*2);
-      ctx.strokeStyle=this.color;ctx.lineWidth=4;ctx.globalAlpha=alpha;
-      ctx.shadowColor=this.color;ctx.shadowBlur=24;ctx.stroke();
-      // 내부 채우기
-      ctx.beginPath();ctx.arc(this.x,this.y-40,ULT_R*pulse,0,Math.PI*2);
-      ctx.fillStyle=this.color;ctx.globalAlpha=alpha*.15;ctx.fill();
-      // 남은 시간
-      ctx.globalAlpha=alpha*0.9;ctx.fillStyle=this.color;
-      ctx.font='bold 12px Share Tech Mono';ctx.textAlign='center';
-      ctx.shadowBlur=8;
-      ctx.fillText(Math.ceil(this.ultTimer)+'s',this.x,this.y-40-ULT_R*pulse-8);
-      ctx.restore();
-    }
-    drawMantis(this.x,this.y,this.facing,this.color,this.ultActive?'special':this.state,this.frame,this.hp,this.blocking);
+    drawMantis(this.x,this.y,this.facing,this.color,this.ultActive?'special':this.state,this.frame,this.hp,this.blocking,this.ultActive);
   }
   getState(){
     return {x:this.x,y:this.y,vx:this.vx,vy:this.vy,hp:this.hp,facing:this.facing,state:this.state,stateTimer:this.stateTimer,hitstun:this.hitstun,invincible:this.invincible,blocking:this.blocking,hitbox:this.hitbox,specialCooldown:this.specialCooldown,ultActive:this.ultActive,ultTimer:this.ultTimer,ultCooldown:this.ultCooldown};
@@ -795,8 +825,10 @@ function updateNameHUD(){
 }
 
 function initGame(){
-  p1=new Mantis(180,true,'#4dff6e');
-  p2=new Mantis(680,false,'#ff4d6e');
+  const p1Color = myRole==='guest' ? '#ff6e7f' : myColor;
+  const p2Color = myRole==='guest' ? myColor : '#ff6e7f';
+  p1=new Mantis(180,true,p1Color);
+  p2=new Mantis(680,false,p2Color);
   roundNum=1;p1Wins=0;p2Wins=0;particles=[];
   updateNameHUD();
   updateRoundHUD();
@@ -855,8 +887,9 @@ function loop(ts){
     // ── CPU 모드 ──────────────────────────────────────
     if(isCPUMode){
       if(p1.hitstun<=0&&p1.hp>0){
-        if(keys['ArrowLeft']) p1.vx=-230;
-        else if(keys['ArrowRight']) p1.vx=230;
+        const spd=p1.blocking?80:230;
+        if(keys['ArrowLeft']) p1.vx=-spd;
+        else if(keys['ArrowRight']) p1.vx=spd;
         else if(p1.onGround) p1.vx*=.5;
         if(jp['ArrowUp']) p1.jump();
         if(jp['KeyA']) p1.attack('weak');
@@ -865,7 +898,6 @@ function loop(ts){
         if(jp['KeyR']) p1.ultimate();
         p1.blocking=!!((keys['ArrowDown']||keys['KeyF'])&&p1.onGround);
       }
-      aiUpdate(p2,p1,dt);
       p1.update(dt,p2);p2.update(dt,p1);
       p1.checkHit(p2);p2.checkHit(p1);
       for(const pt of particles){pt.x+=pt.vx*dt;pt.y+=pt.vy*dt;pt.vy+=700*dt;pt.life-=dt*(pt.spark?3.5:2);}
@@ -891,8 +923,9 @@ function loop(ts){
       }
       if(myRole==='host'){
         if(p1.hitstun<=0&&p1.hp>0){
-          if(keys['ArrowLeft']) p1.vx=-230;
-          else if(keys['ArrowRight']) p1.vx=230;
+          const spd=p1.blocking?80:230;
+          if(keys['ArrowLeft']) p1.vx=-spd;
+          else if(keys['ArrowRight']) p1.vx=spd;
           else if(p1.onGround) p1.vx*=.5;
           if(jp['ArrowUp']) p1.jump();
           if(jp['KeyA']) p1.attack('weak');
@@ -902,8 +935,9 @@ function loop(ts){
           p1.blocking=!!((keys['ArrowDown']||keys['KeyF'])&&p1.onGround);
         }
         if(p2.hitstun<=0&&p2.hp>0){
-          if(opponentKeys['ArrowLeft']) p2.vx=-230;
-          else if(opponentKeys['ArrowRight']) p2.vx=230;
+          const spd2=p2.blocking?80:230;
+          if(opponentKeys['ArrowLeft']) p2.vx=-spd2;
+          else if(opponentKeys['ArrowRight']) p2.vx=spd2;
           else if(p2.onGround) p2.vx*=.5;
           if(opponentKeys['ArrowUp']&&!p2._oppJumpHeld){p2.jump();p2._oppJumpHeld=true;}
           if(!opponentKeys['ArrowUp']) p2._oppJumpHeld=false;
@@ -1030,6 +1064,7 @@ function drawBackground(){
 }
 
 // 초기 화면 그리기
+initColorPicker();
 drawAll();
 </script>
 </body>
