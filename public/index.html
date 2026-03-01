@@ -104,7 +104,7 @@ canvas{display:block;box-shadow:0 0 80px rgba(0,0,0,.8);}
 /* 키뷰어 */
 #key-viewer{
   position:absolute;
-  bottom:2px; left:50%; transform:translateX(-50%);
+  bottom:-18px; left:50%; transform:translateX(-50%);
   display:flex;gap:14px;align-items:flex-end;
   pointer-events:none;z-index:10;
   opacity:0;transition:opacity .3s;
@@ -140,6 +140,12 @@ canvas{display:block;box-shadow:0 0 80px rgba(0,0,0,.8);}
   border-color:#4db4ff;
   color:#4db4ff;
   box-shadow:0 0 8px rgba(77,180,255,.4);
+}
+.kv-key.cooldown{
+  background:rgba(255,60,60,.12);
+  border-color:rgba(255,60,60,.4);
+  color:rgba(255,100,100,.7);
+  font-size:9px;
 }
 
 /* Quick Match 대기 점 애니메이션 */
@@ -413,6 +419,16 @@ function updateKeyViewer(){
   for(const [id, active] of Object.entries(map)){
     document.getElementById(id).classList.toggle('active', !!active);
   }
+  // D키 쿨타임 표시
+  const myMantis = myRole==='guest' ? p2 : p1;
+  const dKey = document.getElementById('kv-d');
+  if(myMantis && myMantis.specialCooldown>0){
+    dKey.classList.add('cooldown');
+    dKey.textContent = Math.ceil(myMantis.specialCooldown);
+  } else {
+    dKey.classList.remove('cooldown');
+    dKey.textContent = 'D';
+  }
 }
 function aiUpdate(ai, opp, dt) {
   if(ai.hitstun>0||ai.hp<=0) return;
@@ -596,19 +612,26 @@ class Mantis {
     this.state='idle';this.stateTimer=0;
     this.hitbox=null;this.hitstun=0;this.invincible=0;
     this.blocking=false;this.frame=0;
+    this.specialCooldown=0;
   }
   reset(){
     this.x=this.startX;this.y=GROUND;this.vx=0;this.vy=0;
     this.hp=MAX_HP;this.facing=this.initFacing;
     this.state='idle';this.stateTimer=0;
     this.hitbox=null;this.hitstun=0;this.invincible=0;this.blocking=false;
+    this.specialCooldown=0;
   }
   attack(type){
     if(this.state==='hurt'||this.state==='dead') return;
+    if(this.blocking) return; // 방어 중 공격 불가
     if(this.stateTimer>0&&(this.state==='weak'||this.state==='strong'||this.state==='special')) return;
     if(type==='weak'){ this.state='weak';this.stateTimer=.22;this.hitbox={ox:this.facing*-48,oy:-72,w:70,h:60,dmg:7,kb:3,type}; }
     else if(type==='strong'){ this.state='strong';this.stateTimer=.38;this.hitbox={ox:this.facing*-52,oy:-80,w:82,h:75,dmg:15,kb:6,type}; }
-    else if(type==='special'){ this.state='special';this.stateTimer=.5;this.hitbox={ox:this.facing*-40,oy:-85,w:90,h:85,dmg:22,kb:9,type}; }
+    else if(type==='special'){
+      if(this.specialCooldown>0) return; // 쿨타임 중
+      this.state='special';this.stateTimer=.5;this.hitbox={ox:this.facing*-40,oy:-85,w:90,h:85,dmg:22,kb:9,type};
+      this.specialCooldown=4; // 4초 쿨타임
+    }
   }
   jump(){
     if(this.jumps<2){ this.vy=this.jumps===0?-680:-560;this.jumps++;this.onGround=false;burst(this.x,this.y,this.color,5); }
@@ -618,6 +641,7 @@ class Mantis {
     this.stateTimer=Math.max(0,this.stateTimer-dt);
     this.hitstun=Math.max(0,this.hitstun-dt);
     this.invincible=Math.max(0,this.invincible-dt);
+    this.specialCooldown=Math.max(0,this.specialCooldown-dt);
     if(this.stateTimer<=0&&(this.state==='weak'||this.state==='strong'||this.state==='special'||this.state==='hurt')){ this.state='idle';this.hitbox=null; }
     if(this.hitstun<=0&&this.state==='hurt') this.state='idle';
     if(!this.onGround) this.vy+=1500*dt;
@@ -649,13 +673,13 @@ class Mantis {
     drawMantis(this.x,this.y,this.facing,this.color,this.state,this.frame,this.hp,this.blocking);
   }
   getState(){
-    return {x:this.x,y:this.y,vx:this.vx,vy:this.vy,hp:this.hp,facing:this.facing,state:this.state,stateTimer:this.stateTimer,hitstun:this.hitstun,invincible:this.invincible,blocking:this.blocking,hitbox:this.hitbox};
+    return {x:this.x,y:this.y,vx:this.vx,vy:this.vy,hp:this.hp,facing:this.facing,state:this.state,stateTimer:this.stateTimer,hitstun:this.hitstun,invincible:this.invincible,blocking:this.blocking,hitbox:this.hitbox,specialCooldown:this.specialCooldown};
   }
   applyState(s){
     this.x=s.x;this.y=s.y;this.vx=s.vx;this.vy=s.vy;this.hp=s.hp;
     this.facing=s.facing;this.state=s.state;this.stateTimer=s.stateTimer;
     this.hitstun=s.hitstun;this.invincible=s.invincible;this.blocking=s.blocking;
-    this.hitbox=s.hitbox;
+    this.hitbox=s.hitbox;this.specialCooldown=s.specialCooldown||0;
   }
 }
 
