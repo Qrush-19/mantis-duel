@@ -896,7 +896,7 @@ function loop(ts){
         if(jp['KeyS']) p1.attack('strong');
         if(jp['KeyD']) p1.attack('special');
         if(jp['KeyR']) p1.ultimate();
-        p1.blocking=!!((keys['ArrowDown']||keys['KeyF'])&&p1.onGround);
+        p1.blocking=!!(keys['ArrowDown']||keys['KeyF']);
       }
       aiUpdate(p2,p1,dt);
       p1.update(dt,p2);p2.update(dt,p1);
@@ -933,7 +933,7 @@ function loop(ts){
           if(jp['KeyS']) p1.attack('strong');
           if(jp['KeyD']) p1.attack('special');
           if(jp['KeyR']) p1.ultimate();
-          p1.blocking=!!((keys['ArrowDown']||keys['KeyF'])&&p1.onGround);
+          p1.blocking=!!(keys['ArrowDown']||keys['KeyF']);
         }
         if(p2.hitstun<=0&&p2.hp>0){
           const spd2=p2.blocking?80:230;
@@ -950,7 +950,7 @@ function loop(ts){
           if(!opponentKeys['KeyD']) p2._oppDHeld=false;
           if(opponentKeys['KeyR']&&!p2._oppRHeld){p2.ultimate();p2._oppRHeld=true;}
           if(!opponentKeys['KeyR']) p2._oppRHeld=false;
-          p2.blocking=!!((opponentKeys['ArrowDown']||opponentKeys['KeyF'])&&p2.onGround);
+          p2.blocking=!!(opponentKeys['ArrowDown']||opponentKeys['KeyF']);
         }
         p1.update(dt,p2);p2.update(dt,p1);
         p1.checkHit(p2);p2.checkHit(p1);
