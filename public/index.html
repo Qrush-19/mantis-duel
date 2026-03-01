@@ -141,6 +141,12 @@ canvas{display:block;box-shadow:0 0 80px rgba(0,0,0,.8);}
   color:#4db4ff;
   box-shadow:0 0 8px rgba(77,180,255,.4);
 }
+.kv-ult.active{
+  background:rgba(200,100,255,.25);
+  border-color:#c864ff;
+  color:#c864ff;
+  box-shadow:0 0 8px rgba(200,100,255,.5);
+}
 .kv-key.cooldown{
   background:rgba(255,60,60,.12);
   border-color:rgba(255,60,60,.4);
@@ -202,6 +208,7 @@ canvas{display:block;box-shadow:0 0 80px rgba(0,0,0,.8);}
         <div class="kv-key kv-atk" id="kv-a">A</div>
         <div class="kv-key kv-atk" id="kv-s">S</div>
         <div class="kv-key kv-atk" id="kv-d">D</div>
+        <div class="kv-key kv-ult" id="kv-r">R</div>
       </div>
       <div class="kv-row">
         <div class="kv-key kv-block" id="kv-f">F</div>
@@ -415,6 +422,7 @@ function updateKeyViewer(){
     'kv-s':     keys['KeyS'],
     'kv-d':     keys['KeyD'],
     'kv-f':     keys['KeyF'],
+    'kv-r':     keys['KeyR'],
   };
   for(const [id, active] of Object.entries(map)){
     document.getElementById(id).classList.toggle('active', !!active);
@@ -428,6 +436,15 @@ function updateKeyViewer(){
   } else {
     dKey.classList.remove('cooldown');
     dKey.textContent = 'D';
+  }
+  // R키 쿨타임 표시
+  const rKey = document.getElementById('kv-r');
+  if(myMantis && myMantis.ultCooldown>0 && !myMantis.ultActive){
+    rKey.classList.add('cooldown');
+    rKey.textContent = Math.ceil(myMantis.ultCooldown);
+  } else {
+    rKey.classList.remove('cooldown');
+    rKey.textContent = myMantis&&myMantis.ultActive ? '●' : 'R';
   }
 }
 function aiUpdate(ai, opp, dt) {
@@ -613,6 +630,7 @@ class Mantis {
     this.hitbox=null;this.hitstun=0;this.invincible=0;
     this.blocking=false;this.frame=0;
     this.specialCooldown=0;
+    this.ultActive=false;this.ultTimer=0;this.ultCooldown=0;this.ultHitTimer=0;
   }
   reset(){
     this.x=this.startX;this.y=GROUND;this.vx=0;this.vy=0;
@@ -620,18 +638,30 @@ class Mantis {
     this.state='idle';this.stateTimer=0;
     this.hitbox=null;this.hitstun=0;this.invincible=0;this.blocking=false;
     this.specialCooldown=0;
+    this.ultActive=false;this.ultTimer=0;this.ultCooldown=0;this.ultHitTimer=0;
   }
   attack(type){
     if(this.state==='hurt'||this.state==='dead') return;
-    if(this.blocking) return; // 방어 중 공격 불가
+    if(this.blocking) return;
     if(this.stateTimer>0&&(this.state==='weak'||this.state==='strong'||this.state==='special')) return;
-    if(type==='weak'){ this.state='weak';this.stateTimer=.22;this.hitbox={ox:this.facing*-48,oy:-72,w:70,h:60,dmg:7,kb:3,type}; }
-    else if(type==='strong'){ this.state='strong';this.stateTimer=.38;this.hitbox={ox:this.facing*-52,oy:-80,w:82,h:75,dmg:15,kb:6,type}; }
+    if(type==='weak'){ this.state='weak';this.stateTimer=.22;this.hitbox={ox:this.facing*-48,oy:-72,w:70,h:60,dmg:2,kb:3,type}; }
+    else if(type==='strong'){ this.state='strong';this.stateTimer=.38;this.hitbox={ox:this.facing*-52,oy:-80,w:82,h:75,dmg:5,kb:6,type}; }
     else if(type==='special'){
-      if(this.specialCooldown>0) return; // 쿨타임 중
-      this.state='special';this.stateTimer=.5;this.hitbox={ox:this.facing*-40,oy:-85,w:90,h:85,dmg:22,kb:9,type};
-      this.specialCooldown=4; // 4초 쿨타임
+      if(this.specialCooldown>0) return;
+      this.state='special';this.stateTimer=.5;this.hitbox={ox:this.facing*-40,oy:-85,w:90,h:85,dmg:8,kb:9,type};
+      this.specialCooldown=4;
     }
+  }
+  ultimate(){
+    if(this.state==='hurt'||this.state==='dead') return;
+    if(this.blocking) return;
+    if(this.ultCooldown>0) return;
+    this.ultActive=true;
+    this.ultTimer=5;       // 5초 지속
+    this.ultCooldown=15;   // 15초 쿨타임
+    this.ultHitTimer=0;    // 내부 히트 간격 타이머
+    burst(this.x,this.y-40,this.color,20,true);
+    showAnnounce('ULTIMATE!', this.color);
   }
   jump(){
     if(this.jumps<2){ this.vy=this.jumps===0?-680:-560;this.jumps++;this.onGround=false;burst(this.x,this.y,this.color,5); }
@@ -642,6 +672,25 @@ class Mantis {
     this.hitstun=Math.max(0,this.hitstun-dt);
     this.invincible=Math.max(0,this.invincible-dt);
     this.specialCooldown=Math.max(0,this.specialCooldown-dt);
+    this.ultCooldown=Math.max(0,(this.ultCooldown||0)-dt);
+    if(this.ultActive){
+      this.ultTimer=Math.max(0,this.ultTimer-dt);
+      this.ultHitTimer=Math.max(0,(this.ultHitTimer||0)-dt);
+      if(this.ultTimer<=0){ this.ultActive=false; }
+      else if(this.ultHitTimer<=0&&opp.hp>0&&opp.invincible<=0){
+        // 원 범위 충돌: 중심 거리 체크
+        const dx=opp.x-this.x, dy=(opp.y-40)-(this.y-40);
+        const dist=Math.sqrt(dx*dx+dy*dy);
+        const ULT_R=90;
+        if(dist<ULT_R){
+          const dmg=opp.blocking?1:6;
+          opp.hp=Math.max(0,opp.hp-dmg);
+          if(!opp.blocking){ opp.invincible=.25; }
+          spark(opp.x,opp.y-30,0,this.color);
+          this.ultHitTimer=.5; // 0.5초마다 한 번씩 히트
+        }
+      }
+    }
     if(this.stateTimer<=0&&(this.state==='weak'||this.state==='strong'||this.state==='special'||this.state==='hurt')){ this.state='idle';this.hitbox=null; }
     if(this.hitstun<=0&&this.state==='hurt') this.state='idle';
     if(!this.onGround) this.vy+=1500*dt;
@@ -670,16 +719,35 @@ class Mantis {
   }
   draw(){
     if(this.hp<=0&&this.state!=='dead') this.state='dead';
+    // 궁극기 원 그리기
+    if(this.ultActive&&this.ultTimer>0){
+      const ULT_R=90;
+      const alpha=Math.min(1,this.ultTimer/5)*0.7;
+      const pulse=1+Math.sin(Date.now()*.008)*0.06;
+      ctx.save();
+      ctx.beginPath();ctx.arc(this.x,this.y-40,ULT_R*pulse,0,Math.PI*2);
+      ctx.strokeStyle=this.color;ctx.lineWidth=3;ctx.globalAlpha=alpha;
+      ctx.shadowColor=this.color;ctx.shadowBlur=18;ctx.stroke();
+      ctx.beginPath();ctx.arc(this.x,this.y-40,ULT_R*pulse,0,Math.PI*2);
+      ctx.fillStyle=this.color;ctx.globalAlpha=alpha*.12;ctx.fill();
+      // 남은 시간 표시
+      ctx.globalAlpha=alpha;ctx.fillStyle=this.color;
+      ctx.font='bold 11px Share Tech Mono';ctx.textAlign='center';
+      ctx.shadowBlur=6;
+      ctx.fillText(Math.ceil(this.ultTimer)+'s',this.x,this.y-40-ULT_R-6);
+      ctx.restore();
+    }
     drawMantis(this.x,this.y,this.facing,this.color,this.state,this.frame,this.hp,this.blocking);
   }
   getState(){
-    return {x:this.x,y:this.y,vx:this.vx,vy:this.vy,hp:this.hp,facing:this.facing,state:this.state,stateTimer:this.stateTimer,hitstun:this.hitstun,invincible:this.invincible,blocking:this.blocking,hitbox:this.hitbox,specialCooldown:this.specialCooldown};
+    return {x:this.x,y:this.y,vx:this.vx,vy:this.vy,hp:this.hp,facing:this.facing,state:this.state,stateTimer:this.stateTimer,hitstun:this.hitstun,invincible:this.invincible,blocking:this.blocking,hitbox:this.hitbox,specialCooldown:this.specialCooldown,ultActive:this.ultActive,ultTimer:this.ultTimer,ultCooldown:this.ultCooldown};
   }
   applyState(s){
     this.x=s.x;this.y=s.y;this.vx=s.vx;this.vy=s.vy;this.hp=s.hp;
     this.facing=s.facing;this.state=s.state;this.stateTimer=s.stateTimer;
     this.hitstun=s.hitstun;this.invincible=s.invincible;this.blocking=s.blocking;
     this.hitbox=s.hitbox;this.specialCooldown=s.specialCooldown||0;
+    this.ultActive=s.ultActive||false;this.ultTimer=s.ultTimer||0;this.ultCooldown=s.ultCooldown||0;
   }
 }
 
@@ -776,6 +844,7 @@ function loop(ts){
         if(jp['KeyA']) p1.attack('weak');
         if(jp['KeyS']) p1.attack('strong');
         if(jp['KeyD']) p1.attack('special');
+        if(jp['KeyR']) p1.ultimate();
         p1.blocking=!!((keys['ArrowDown']||keys['KeyF'])&&p1.onGround);
       }
       aiUpdate(p2,p1,dt);
@@ -811,6 +880,7 @@ function loop(ts){
           if(jp['KeyA']) p1.attack('weak');
           if(jp['KeyS']) p1.attack('strong');
           if(jp['KeyD']) p1.attack('special');
+          if(jp['KeyR']) p1.ultimate();
           p1.blocking=!!((keys['ArrowDown']||keys['KeyF'])&&p1.onGround);
         }
         if(p2.hitstun<=0&&p2.hp>0){
@@ -825,6 +895,8 @@ function loop(ts){
           if(!opponentKeys['KeyS']) p2._oppSHeld=false;
           if(opponentKeys['KeyD']&&!p2._oppDHeld){p2.attack('special');p2._oppDHeld=true;}
           if(!opponentKeys['KeyD']) p2._oppDHeld=false;
+          if(opponentKeys['KeyR']&&!p2._oppRHeld){p2.ultimate();p2._oppRHeld=true;}
+          if(!opponentKeys['KeyR']) p2._oppRHeld=false;
           p2.blocking=!!((opponentKeys['ArrowDown']||opponentKeys['KeyF'])&&p2.onGround);
         }
         p1.update(dt,p2);p2.update(dt,p1);
