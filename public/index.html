@@ -898,6 +898,7 @@ function loop(ts){
         if(jp['KeyR']) p1.ultimate();
         p1.blocking=!!((keys['ArrowDown']||keys['KeyF'])&&p1.onGround);
       }
+      aiUpdate(p2,p1,dt);
       p1.update(dt,p2);p2.update(dt,p1);
       p1.checkHit(p2);p2.checkHit(p1);
       for(const pt of particles){pt.x+=pt.vx*dt;pt.y+=pt.vy*dt;pt.vy+=700*dt;pt.life-=dt*(pt.spark?3.5:2);}
